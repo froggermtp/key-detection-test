@@ -12,6 +12,6 @@ You will need to install python packages *python-opencv* and *imutils* to use th
 I recommend using python's package manager pip.
 
 ```
-pip3 install python-opencv
+pip3 install opencv-python
 pip3 install imutils
 ```
