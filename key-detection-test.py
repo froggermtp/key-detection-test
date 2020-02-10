@@ -9,6 +9,7 @@ import argparse
 def setup_cli():
     parser = argparse.ArgumentParser()
     parser.add_argument('-v', '--view_thresholds', action="store_true")
+    parser.add_argument('-i', '--ip', default='127.0.0.1')
     return parser.parse_args()
 
 
@@ -23,8 +24,13 @@ def view_example(filename, example):
 
 
 def load_key(filename):
-    im = cv2.imread(filename, cv2.IMREAD_GRAYSCALE)
-    im = imutils.resize(im, width=300)
+    im = cv2.imread(filename)
+    return process_image(filename, im)
+
+
+def process_image(filename, im):
+    im = cv2.cvtColor(im, cv2.COLOR_BGR2GRAY)
+    # im = imutils.resize(im, width=300)
     thresh = cv2.adaptiveThreshold(im, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
                                    cv2.THRESH_BINARY, 199, 5)
     Example = namedtuple('Example', 'filename threshold')
@@ -47,7 +53,35 @@ def which_key(key, training_set):
             key.threshold, example.threshold, cv2.CONTOURS_MATCH_I2, 0)
         heapq.heappush(distances, (d2, example.filename))
 
+    print(distances)
+
     return distances[0][1]
+
+
+def open_camera(training_set, ip):
+    URL = "http://" + ip + ":8080/video"
+
+    cv2.namedWindow("preview")
+    vc = cv2.VideoCapture(URL)
+
+    if vc.isOpened():  # try to get the first frame
+        rval, frame = vc.read()
+    else:
+        rval = False
+
+    while rval:
+        cv2.imshow("preview", frame)
+        rval, frame = vc.read()
+        example = process_image('camera', frame)
+        which_key(example, training_set)
+        frame = example.threshold
+
+        key = cv2.waitKey(20)
+        if key == 27:  # exit on ESC
+            break
+
+    cv2.destroyWindow("preview")
+    vc.release()
 
 
 if __name__ == '__main__':
@@ -57,5 +91,4 @@ if __name__ == '__main__':
     if args.view_thresholds:
         view_all_examples(training_set)
 
-    keyA2 = load_key('keyA3.jpg')
-    print(which_key(keyA2, training_set))
+    open_camera(training_set, args.ip)
