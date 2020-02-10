@@ -2,10 +2,23 @@ import cv2
 import imutils
 import heapq
 from collections import namedtuple
+from pathlib import Path
+import argparse
 
 
-def view_threshold(filename, thresh):
-    cv2.imshow(filename, thresh)
+def setup_cli():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-v', '--view_thresholds', action="store_true")
+    return parser.parse_args()
+
+
+def view_all_examples(examples):
+    for example in examples:
+        view_example(example.filename, example.threshold)
+
+
+def view_example(filename, example):
+    cv2.imshow(filename, example)
     cv2.waitKey(0)
 
 
@@ -16,13 +29,11 @@ def load_key(filename):
                                    cv2.THRESH_BINARY, 199, 5)
     Example = namedtuple('Example', 'filename threshold')
 
-    #view_threshold(filename, thresh)
-
     return Example(filename, thresh)
 
 
 def setup_training_set():
-    filenames_for_training = ['keyA1.jpg', 'keyB.jpg']
+    filenames_for_training = map(str, Path('./training-set').glob('*.jpg'))
     examples = [load_key(filename) for filename in filenames_for_training]
 
     return examples
@@ -40,6 +51,11 @@ def which_key(key, training_set):
 
 
 if __name__ == '__main__':
+    args = setup_cli()
     training_set = setup_training_set()
-    keyA2 = load_key('keyA2.jpg')
+
+    if args.view_thresholds:
+        view_all_examples(training_set)
+
+    keyA2 = load_key('keyA3.jpg')
     print(which_key(keyA2, training_set))
