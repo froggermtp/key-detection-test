@@ -134,7 +134,7 @@ def findContours(edges):
     # Simply finds the largest contour. The key is unlikely to always be the largest contour.
     c = max(contours, key=cv2.contourArea)
 
-    return contours
+    return c
 
 
 def setup_training_set():
