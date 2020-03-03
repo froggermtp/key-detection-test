@@ -43,10 +43,10 @@ def process_image(filename, im):
     contours = findContours(final_im)
     features = extract_features(im_gray, resized, contours)
 
-    blank_image = np.zeros(resized.shape, np.uint8)
-    cv2.drawContours(blank_image, contours, -1, (0, 255, 0), 3)
+    # blank_image = np.zeros(resized.shape, np.uint8)
+    # cv2.drawContours(blank_image, contours, -1, (0, 255, 0), 3)
 
-    return Example(filename, blank_image, features)
+    return Example(filename, contours, features)
 
 
 def extract_features(gray_im, im, contours):
@@ -218,7 +218,7 @@ if __name__ == '__main__':
 
     if not args.video:
         test_set = setup_test_set()
-        view_all_examples(test_set)
+        # view_all_examples(test_set)
         run_trials(training_set, test_set)
     else:
         open_camera(training_set, args.ip)
