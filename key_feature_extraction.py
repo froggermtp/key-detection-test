@@ -173,8 +173,9 @@ if __name__ == "__main__":
     all_features = []
 
     for p, im, c in zip(paths, images, contours):
-        view_contours(im, c)
-        pause()
+        # Uncomment these two lines to view the contours
+        # view_contours(im, c)
+        # pause()
 
         # All the features are combined into a single dictionary.
         # If you add a new feature, it needs to be added to this dictionary.
