@@ -4,6 +4,8 @@ from pathlib import Path
 import cv2
 import imutils
 import numpy as np
+from skimage.segmentation import morphological_chan_vese, checkerboard_level_set
+import matplotlib.pyplot as plt
 
 
 # General Stuff
@@ -15,7 +17,7 @@ def find_jpgs_in_dir(path):
 
 def extract_image_name(path):
     image_name = os.path.basename(os.path.normpath(path))
-    regex = "^key(\w+)[0-9].jpg"
+    regex = "^(?i)key([a-zA-Z]+)[0-9]+.jpg"
     return re.split(regex, image_name)[1]
 
 
@@ -43,58 +45,40 @@ def resize_img(img, size=500):
 
 
 def get_key_contour(img):
-    grey = make_grey(img)
-    blurred = do_gaussian_blur(grey)
-    sobled = sobel(blurred)
-
-    for x in range(len(sobled)):
-        for y in range(len(sobled[x])):
-            if sobled[x][y] < 20:
-                sobled[x][y] = 0
-            else:
-                sobled[x][y] = 255
-
-    contours = find_external_contours(sobled)
+    prepped = preprocess_img(img)
+    contours = find_external_contours(prepped)
     largest_contour = get_largest_contour(contours)
 
     return largest_contour
 
 
-def make_grey(img):
-    return cv2.cvtColor(img, cv2.COLOR_RGB2GRAY)
+def preprocess_img(img):
+    gridsize = 1
 
+    bgr = imutils.resize(img, 500)
 
-def do_gaussian_blur(img):
-    return cv2.GaussianBlur(img, (5, 5), 2, sigmaY=2)
+    # Use CLAHE to normalize light
+    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
+    clahe = cv2.createCLAHE(clipLimit=1.9, tileGridSize=(gridsize, gridsize))
+    lab[..., 0] = clahe.apply(lab[..., 0])
+    bgr = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
+    filtered = cv2.bilateralFilter(bgr, 9, 10000, 10000)
+    edges = cv2.Canny(filtered, 255, 255, apertureSize=7, L2gradient=True)
 
-def sobel(im):
-    scale = 1
-    delta = 0
-    ddepth = cv2.CV_16S
-
-    grad_x = cv2.Sobel(im, ddepth, 1, 0, ksize=3, scale=scale,
-                       delta=delta, borderType=cv2.BORDER_DEFAULT)
-    grad_y = cv2.Sobel(im, ddepth, 0, 1, ksize=3, scale=scale,
-                       delta=delta, borderType=cv2.BORDER_DEFAULT)
-
-    abs_grad_x = cv2.convertScaleAbs(grad_x)
-    abs_grad_y = cv2.convertScaleAbs(grad_y)
-
-    grad = cv2.addWeighted(abs_grad_x, 0.5, abs_grad_y, 0.5, 0)
-
-    return grad
+    return edges
 
 
 def find_external_contours(img):
     mode = cv2.RETR_EXTERNAL
-    method = cv2.CHAIN_APPROX_SIMPLE
+    method = cv2.CHAIN_APPROX_NONE
     contours, _ = cv2.findContours(img, mode, method)
     return contours
 
 
 def get_largest_contour(contours):
-    return max(contours, key=cv2.contourArea)
+    def f(x): return cv2.arcLength(x, True)
+    return max(contours, key=f)
 
 
 def view_contours(img, contours):
@@ -123,6 +107,8 @@ def draw_contours_on_stencil(stencil, contours):
 # Feature Extraction
 # All of these functions take in contours and return a dictionary entry.
 # We can also calculate masks, histograms, etc but I haven't found a good reason to yet.
+# 4/02/20 update: Based on my tests, none of these basic features are going to work.
+# I've instead pivoted to look at fourier shape descriptors.
 
 
 def hu_moments(contour):
@@ -164,6 +150,32 @@ def equivalent_diameter(contour):
     return {'equivalent_diameter': equi_diameter}
 
 
+def fourier_transform(contour):
+    contour_array = contour[:, 0, :]
+    contour_complex = np.empty(contour_array.shape[:-1], dtype=complex)
+    contour_complex.real = contour_array[:, 0]
+    contour_complex.imag = contour_array[:, 1]
+    fourier_result = np.fft.fft(contour_complex)
+    return fourier_result
+
+
+def plot_stuff(images, contours, filenames):
+    fig = plt.figure(figsize=(8, 8))
+    row = 4
+    col = 4
+    index = 1
+    for image, contour, filename in zip(images, contours, filenames):
+        fig.add_subplot(row, col, index)
+        resized = imutils.resize(image, 500)
+        with_contour = draw_contours_on_stencil(resized, contour)
+        rgb = cv2.cvtColor(with_contour, cv2.COLOR_BGR2RGB)
+        plt.imshow(rgb)
+        plt.axis("off")
+        plt.title(filename)
+        index += 1
+    plt.show()
+
+
 if __name__ == "__main__":
     directory = "./keys/"
     paths = list(find_jpgs_in_dir(directory))
@@ -173,31 +185,47 @@ if __name__ == "__main__":
     all_features = []
 
     for p, im, c in zip(paths, images, contours):
-        # Uncomment these two lines to view the contours
-        # view_contours(im, c)
-        # pause()
+        ft = fourier_transform(c)
+
+        # I was in the middle of implementing fourier shape descriptors
+        # This is one of the main projects for next sprint.
+
+        all_features.append({
+            'class': extract_image_name(p),
+            'ft': ft
+        })
 
         # All the features are combined into a single dictionary.
         # If you add a new feature, it needs to be added to this dictionary.
-        features = {
-            'class': extract_image_name(p),
-            **hu_moments(c),
-            **aspect_ratio(c),
-            **extent(c),
-            **solidity(c),
-            **equivalent_diameter(c)
-        }
+        # features = {
+        #     'class': extract_image_name(p),
+        #     **hu_moments(c),
+        #     **aspect_ratio(c),
+        #     **extent(c),
+        #     **solidity(c),
+        #     **equivalent_diameter(c)
+        # }
 
         # I'm basically creating a space seperated file here.
         # This output will be piped into a file.
-        all_features.append(features)
-        print("id class feature val")
+        # all_features.append(features)
+        # print("id class feature val")
 
-        for ii, features in enumerate(all_features):
-            cls = features['class']
+        # for ii, features in enumerate(all_features):
+        #     cls = features['class']
 
-            for feature, val in features.items():
-                if feature == 'class':
-                    continue
-                elif feature != 'class':
-                    print("{} {} {} {}".format(ii, cls, feature, val))
+        #     for feature, val in features.items():
+        #         if feature == 'class':
+        #             continue
+        #         elif feature != 'class':
+        #             print("{} {} {} {}".format(ii, cls, feature, val))
+
+        # Fourier stuff
+        # for ii, features in enumerate(all_features):
+        #     cls = features['class']
+        #     ft = features['ft']
+
+        #     for jj, ft_val in enumerate(ft):
+        #         print("{} {} ft{} {}".format(ii, cls, jj, ft_val))
+
+    plot_stuff(images, contours, paths)
